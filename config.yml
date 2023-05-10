@@ -1,0 +1,8 @@
+jtype: PDFIndexer
+py_modules:
+  - executor.py
+metas:
+  name: PDFIndexer
+  description: PDFIndexer embeds TEXTs and IMAGEs of the PDFs, while extracting the title and caculating the size of the PDFs.
+  url: https://github.com/FingerDance-VH/PDFIndexer
+  keywords: ['pdf', ' indexer', ' pdfindexer', ' roberta', ' clip']
