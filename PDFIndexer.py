@@ -19,6 +19,8 @@ from transformers import AutoTokenizer, AutoModel
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
 import torch
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print('device=', device)
 
 import pickle
 
