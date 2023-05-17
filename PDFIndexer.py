@@ -12,46 +12,36 @@ import urllib.parse
 from tqdm import tqdm
 from bs4 import BeautifulSoup
 import re
-
-import pandas as pd
+from PIL import Image
 
 from transformers import AutoTokenizer, AutoModel
-from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
-import torch
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print('device=', device)
 
-import pickle
+import torch
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# print('device=', device)
 
 from jina import Document, DocumentArray, Executor, requests, Flow
 from jina.logging.logger import JinaLogger
-
-
-'''
-如果使用预训练过的模型，就必须要匹配它在预训练时的最大长度（这里的模型在与训练时似乎最大长度都是512）
-'''
-# Roberta模型
-roberta_model = AutoModel.from_pretrained("xlm-roberta-base")
-#需要移动到cuda上
-roberta_model.to(device)
-tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
-
-# CLIP模型
-clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
-#需要移动到cuda上
-clip_model.to(device)
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
 
 
 class PDFIndexer(Executor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.logger = JinaLogger(context=self.__class__.__name__)
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print('device=', self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
+        self.roberta_model = AutoModel.from_pretrained("xlm-roberta-base")
+        self.roberta_model.to(self.device).eval()
+        self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
+        self.clip_model.to(self.device).eval()
 
     @requests
     def indexEncoder(self, docs: DocumentArray, **kwargs):
         for doc in docs:
+            print('123')
             # 处理文本
             pdf_text = self.get_pdf_text(doc)
             pdf_text_list = self.split_text(pdf_text)
@@ -60,7 +50,7 @@ class PDFIndexer(Executor):
             d1 = Document(text='text_tensor_list')
             d1.chunks.extend([Document(tensor=text_tensor) for text_tensor in text_tensor_list])
             doc.chunks.extend([d1])
-
+            
             # 处理图片
             pdf_img = self.get_pdf_img(doc)
             img_tensor_list = self.imgEncoder(pdf_img)
@@ -68,16 +58,23 @@ class PDFIndexer(Executor):
             d2 = Document(text='img_tensor_list')
             d2.chunks.extend([Document(tensor=img_tensor) for img_tensor in img_tensor_list])
             doc.chunks.extend([d2])
-
+            
             # 获取PDF标题
             title = self.extractTitle(doc)
             print(title)
-            doc.chunks.extend([Document(text=title)])
-
+            # doc.chunks.extend([Document(text=title)])
+			doc.tags['title'] = title
+            
             # 获取PDF大小
             size = self.get_pdf_size(doc)
             print(size)
-            doc.chunks.extend([Document(text=size)])
+            # doc.chunks.extend([Document(text=size)])
+			doc.tags['size'] = size
+			
+            # 获取PDF封面图
+            img = self.extractFirstImg(doc)
+            d3 = Document(text='img_pixmap_byte')
+            d3.chunks.extend([Document(blob = img)])
 
     # 获取PDF文本
     def get_pdf_text(self, doc: Document):
@@ -234,6 +231,20 @@ class PDFIndexer(Executor):
             else:
                 size = str(KB) + 'KB'
         return size
+
+    # 提取首页图片
+    def extractFirstImg(self, doc: Document):
+        pdf = fitz.open(doc)
+        # 获取PDF首页
+        page = pdf[0]
+        # 将首页转换为Pixmap对象
+        pix = page.get_pixmap(dpi=72)
+        # 将Pixmap对象转换为Image对象
+        img = Image.frombytes('RGB', [pix.width, pix.height], pix.samples)
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        data = buffer.getvalue()
+        return data
 
     # 提取标题
     def extractTitle(self, doc: Document):
