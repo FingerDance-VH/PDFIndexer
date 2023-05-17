@@ -9,7 +9,7 @@ PDFIndexer encodes the text and images of the PDF while extracting the title and
 Firstly, text, picture, cover image and title in PDF are extracted and the size of PDF file is calculated. Then xlm-Roberta-base model and clip-vit-large-patch14 model are used to encode text and picture in pdf respectively. These are the final output parameters of PDFIndexer. The final output is nested, for example, doc.chunks[0] is a text document, doc.chunks[0].chunks is a list of text tensors. tags['title'] and tags['size'] are written directly into doc.tags['title'] and doc.tags['size'], perhaps slightly confusing [doge].
 
 ### Important statement
-①sandbox cannot be used normally, because it always causes problems when introducing xlm-Roberta-base model and clip-vit-large-patch14 model, it is recommended to use Jina/Source;
+①sandbox cannot be used normally, because it always causes problems when introducing xlm-Roberta-base model and clip-vit-large-patch14 model, it is recommended to use Jina/Source;\n
 ②This code is only used for learning and communication.
 
 ---
