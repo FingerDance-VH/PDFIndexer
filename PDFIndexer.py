@@ -30,7 +30,6 @@ class PDFIndexer(Executor):
         super().__init__(*args, **kwargs)
         self.logger = JinaLogger(context=self.__class__.__name__)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print('device=', self.device)
         self.tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
         self.roberta_model = AutoModel.from_pretrained("xlm-roberta-base")
         self.roberta_model.to(self.device).eval()
@@ -41,9 +40,11 @@ class PDFIndexer(Executor):
     @requests
     def indexEncoder(self, docs: DocumentArray, **kwargs):
         for doc in docs:
-            print('123')
+            # print('243524')
+            # print('device=', self.device)
+            pdf = self._parse_pdf(doc)
             # 处理文本
-            pdf_text = self.get_pdf_text(doc)
+            pdf_text = self.get_pdf_text(pdf)
             pdf_text_list = self.split_text(pdf_text)
             text_tensor_list = self.textEncoder(pdf_text_list)
             print(len(text_tensor_list))
@@ -63,25 +64,35 @@ class PDFIndexer(Executor):
             title = self.extractTitle(doc)
             print(title)
             # doc.chunks.extend([Document(text=title)])
-			doc.tags['title'] = title
+            doc.tags['title'] = title
             
             # 获取PDF大小
             size = self.get_pdf_size(doc)
             print(size)
             # doc.chunks.extend([Document(text=size)])
-			doc.tags['size'] = size
+            doc.tags['size'] = size
 			
             # 获取PDF封面图
-            img = self.extractFirstImg(doc)
+            img = self.extractFirstImg(pdf)
             d3 = Document(text='img_pixmap_byte')
             d3.chunks.extend([Document(blob = img)])
+            doc.chunks.extend([d3])
+
+    def _parse_pdf(self, doc: Document):
+        pdf = None
+        try:
+            if doc.blob:
+                pdf = fitz.open(stream=doc.blob, filetype='pdf')
+            elif doc.uri:
+                pdf = fitz.open(doc.uri)
+                # print(pdf)
+
+        except Exception as ex:
+            self.logger.error(f'Error！！！：Failed to open due to: {ex}')
+        return pdf
 
     # 获取PDF文本
-    def get_pdf_text(self, doc: Document):
-        try:
-            pdf = fitz.open(doc.uri)
-        except:
-            print('只接受文件URI，不支持blob')
+    def get_pdf_text(self,pdf):
         # 将pdf转成html
         # pdf = fitz.open(file_path)
         html_content = ''
@@ -150,7 +161,8 @@ class PDFIndexer(Executor):
         try:
             pdf = pdfplumber.open(doc.uri)
         except:
-            print('只接受文件URI，不支持blob')
+            pdf = pdfplumber.open(stream=doc.blob, filetype='pdf')
+            # print('只接受文件URI，不支持blob')
         image_list = []
         for i in pdf.pages:
             images = i.images
@@ -217,11 +229,13 @@ class PDFIndexer(Executor):
     def get_pdf_size(self, doc: Document):
         try:
             file_path = doc.uri
+            with open(file_path, 'rb') as f:
+                # 使用io库将文件读取到内存中
+                stream = io.BytesIO(f.read())
         except:
-            print('只接受文件URI，不支持blob')
-        with open(file_path, 'rb') as f:
-            # 使用io库将文件读取到内存中
-            stream = io.BytesIO(f.read())
+            stream = io.BytesIO(doc.blob.read())
+            # print('只接受文件URI，不支持blob')
+
             # 获取文件大小（字节数）
             file_size = stream.getbuffer().nbytes
             KB = round(file_size / 1024, 1)
@@ -233,8 +247,7 @@ class PDFIndexer(Executor):
         return size
 
     # 提取首页图片
-    def extractFirstImg(self, doc: Document):
-        pdf = fitz.open(doc)
+    def extractFirstImg(self, pdf):
         # 获取PDF首页
         page = pdf[0]
         # 将首页转换为Pixmap对象
@@ -251,8 +264,8 @@ class PDFIndexer(Executor):
         try:
             input_path = doc.uri
         except:
-            print('只接受文件URI，不支持blob')
-
+            # print('只接受文件URI，不支持blob')
+            print('blob文件跳过URL编码转码')
         file = input_path.split(sep='/')[-1][:-4]
         # 判断原文件名中是否含有URL编码
         pattern2 = re.compile('%[0-9a-fA-F]{2}')
@@ -265,7 +278,8 @@ class PDFIndexer(Executor):
         try:
             pdf = fitz.open(input_path)
         except:
-            print(input_path, 'pdf文件损坏')
+            pdf = fitz.open(stream=doc.blob, filetype='pdf')
+            # print(input_path, 'pdf文件损坏')
 
         for page in tqdm(pdf):
             html_content = page.get_text('html')
